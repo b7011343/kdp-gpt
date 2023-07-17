@@ -7,7 +7,7 @@ An open-source python script that can generate books using ChatGPT to be listed 
 ```
 OPENAI_API_KEY=...
 ```
-3. Create python virual environment, this could be done in many ways but I prefer using venv
+3. Create python virtual environment, this could be done in many ways but I prefer using venv
 ```bash
 python3 -m venv .venv
 ```
