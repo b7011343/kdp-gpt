@@ -1,6 +1,7 @@
 import os
 import openai
 import urllib.request
+import json
 from dotenv import load_dotenv
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
@@ -21,12 +22,12 @@ book_chapters = []
 # User input
 title = input('Provide a title for the book: ')
 description = input('Provide a description for the book: ')
+tone = input('Provide the tone that the book should be written in: ')
 chapter_count = int(
     input('Provide the number of chapters that the book should contain: '))
-tone = input('Provide the tone that the book should be written in: ')
 
 
-def send_message(messages):
+def send_message(messages: list):
     response = openai.ChatCompletion.create(
         model='gpt-3.5-turbo',
         temperature=0,
@@ -35,14 +36,14 @@ def send_message(messages):
     return response.choices[0].message.content
 
 
-def create_and_send_message(role, content):
+def create_and_send_message(role: str, content: str):
     new_message = {'role': role, 'content': content}
     current_messages.append(new_message)
     message_res = send_message(current_messages)
     return message_res
 
 
-def download_url(image_url, file_name, max_retries):
+def download_url(image_url: str, file_name: str, max_retries: int):
     if max_retries == 0:
         raise Exception('Max download attempts reached')
     try:
@@ -51,7 +52,7 @@ def download_url(image_url, file_name, max_retries):
         download_url(image_url, file_name, max_retries - 1)
 
 
-def create_image(prompt, chapter_index):
+def create_image(prompt: str, chapter_index: int):
     response = openai.Image.create(
         prompt=prompt,
         n=1,
@@ -87,6 +88,10 @@ for i in range(chapter_count):
     }
     book_chapters.append(book_chapter)
 
+# Dump raw data
+with open('output/raw_book_data.json', 'w') as final:
+    json.dump(book_chapters, final)
+
 # Generate pdf file
 # TODO: Fix this so that words don't wrap https://docs.reportlab.com/reportlab/userguide/ch1_intro/
 print('Generating book pdf')
@@ -117,8 +122,6 @@ body_style.borderWidth = 1
 body_style.alignment = TA_CENTER
 body_style.leading = 120
 body_style.fontSize = 14
-
-# TODO: Add title page
 
 for chapter in book_chapters:
     paragraphs = chapter.split('\n\n')
