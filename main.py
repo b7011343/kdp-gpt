@@ -1,29 +1,29 @@
 import os
 import openai
+import urllib.request
 from dotenv import load_dotenv
 from reportlab.pdfgen import canvas
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
 
 # Load env variables from .env file
 load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-'''
-1. Ask the user for a topic, the number of chapters and a tone
-2. Ask chatgpt to generate a description for each chaper
-3. Ask chatgpt to generate a 500 word chapter in the requested tone
-4. Ask DALL-E-2 to generate an image for the chapter, using the first sentence a prompt, combined
-   with some context
-5. Collate all the text and images into a pdf, also dump them to a file
-6. Create a front cover for the book
-'''
+# Message history to maintain conversation context
+current_messages = []
+
+# List of chapters and corresponding images
+book_chapters = []
 
 # User input
-topic = input('Provide a topic for the book: ')
+title = input('Provide a title for the book: ')
+description = input('Provide a description for the book: ')
 chapter_count = int(
     input('Provide the number of chapters that the book should contain: '))
 tone = input('Provide the tone that the book should be written in: ')
-current_messages = []
-book_chapters = []
 
 
 def send_message(messages):
@@ -42,33 +42,87 @@ def create_and_send_message(role, content):
     return message_res
 
 
-def create_image():
-    return None
+def download_url(image_url, file_name, max_retries):
+    if max_retries == 0:
+        raise Exception('Max download attempts reached')
+    try:
+        urllib.request.urlretrieve(image_url, file_name)
+    except ValueError:
+        download_url(image_url, file_name, max_retries - 1)
 
 
-# Init chatgpt
+def create_image(prompt, chapter_index):
+    response = openai.Image.create(
+        prompt=prompt,
+        n=1,
+        size='900x720',
+    )
+    image_url = response['data'][0]['url']
+    file_name = f'output/{chapter_index}.png'
+    download_url(image_url, file_name, 5)
+    return file_name
+
+
+# Provide chatgpt context
 create_and_send_message('system', 'You are an expert author')
 
 # Generate a list of chapters
+print('Generating chapters')
 chapter_descs = create_and_send_message(
-    'user', f'Write a list of {chapter_count} chapters for a book about {topic}, with {tone} tone').split('\n\n')
+    'user', f'Write a list of {chapter_count} chapters for a book called {title}, about {description}, with {tone} tone').split('\n\n')
+it = iter(chapter_descs)
+chapter_descs = [f'{x}{y}' for x, y in zip(it, it)]
 
 # Generate chapter texts
 for i in range(chapter_count):
     chapter_no = i + 1
+    print(f'Generating chapter {chapter_no}/{chapter_count}')
     chapter_text = create_and_send_message(
-        'user', f'Write chapter {chapter_no} in 500 words')
-    # TODO: Generate illustration and add to book chapters
-    book_chapters.append(chapter_text)
-
-
-print(chapter_descs)
-print('\n')
-print(book_chapters)
+        'user', f'Write chapter number {chapter_no} in at least 500 words')
+    prompt = chapter_descs[i]
+    chapter_image = create_image(prompt, i)
+    book_chapter = {
+        'text': chapter_text,
+        'image': chapter_image,
+    }
+    book_chapters.append(book_chapter)
 
 # Generate pdf file
-# TODO: Fix this so that words don't wrap
-pdf_canvas = canvas.Canvas('books/book.pdf')
+# TODO: Fix this so that words don't wrap https://docs.reportlab.com/reportlab/userguide/ch1_intro/
+print('Generating book pdf')
+pdf_file_name = title.replace(' ', '')
+pdf = canvas.Canvas(f'output/{pdf_file_name}.pdf')
+pdf.setTitle(title)
+
+title_style = ParagraphStyle('title')
+title_style.textColor = 'black'
+title_style.borderColor = 'black'
+title_style.borderWidth = 1
+title_style.alignment = TA_CENTER
+title_style.leading = 120
+title_style.fontSize = 50
+
+chapter_style = ParagraphStyle('chapter')
+chapter_style.textColor = 'black'
+chapter_style.borderColor = 'black'
+chapter_style.borderWidth = 1
+chapter_style.alignment = TA_CENTER
+chapter_style.leading = 120
+chapter_style.fontSize = 28
+
+body_style = ParagraphStyle('body')
+body_style.textColor = 'black'
+body_style.borderColor = 'black'
+body_style.borderWidth = 1
+body_style.alignment = TA_CENTER
+body_style.leading = 120
+body_style.fontSize = 14
+
+# TODO: Add title page
+
 for chapter in book_chapters:
-    pdf_canvas.drawString(100, 750, chapter)
-    pdf_canvas.save()
+    paragraphs = chapter.split('\n\n')
+    chapter_title = paragraphs[0]
+    paragraphs.pop(0)
+    # TODO: Add chapter title to page with chapter para style
+    # TODO: Add each remaining paragraph with body para style
